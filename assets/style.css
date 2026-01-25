@@ -1,0 +1,92 @@
+/* assets/style.css */
+
+/* 主容器样式 */
+.main .block-container {
+    padding-top: 2rem;
+    padding-bottom: 2rem;
+    max-width: 100%;
+}
+
+/* 标题样式 */
+h1, h2, h3 {
+    color: #1E88E5;
+}
+
+/* 按钮样式 */
+.stButton > button {
+    width: 100%;
+    border-radius: 5px;
+    font-weight: 500;
+}
+
+.stButton > button:hover {
+    border-color: #1E88E5;
+    color: #1E88E5;
+}
+
+/* 选择框样式 */
+.stSelectbox > div > div {
+    border-radius: 5px;
+}
+
+/* 滑块样式 */
+.stSlider > div > div > div {
+    background-color: #1E88E5;
+}
+
+/* 数据框样式 */
+.dataframe {
+    font-size: 12px;
+}
+
+/* 指标卡片样式 */
+[data-testid="stMetricValue"] {
+    font-size: 1.5rem;
+    color: #1E88E5;
+}
+
+/* 标签页样式 */
+.stTabs [data-baseweb="tab-list"] {
+    gap: 8px;
+}
+
+.stTabs [data-baseweb="tab"] {
+    height: 50px;
+    white-space: pre-wrap;
+    background-color: #f0f2f6;
+    border-radius: 5px 5px 0 0;
+    padding: 10px 20px;
+}
+
+.stTabs [aria-selected="true"] {
+    background-color: #1E88E5;
+    color: white;
+}
+
+/* 展开器样式 */
+.streamlit-expanderHeader {
+    font-weight: 600;
+    color: #333;
+}
+
+/* 文件上传器样式 */
+.stFileUploader > div > div {
+    border: 2px dashed #1E88E5;
+    border-radius: 10px;
+}
+
+/* 成功/警告/错误消息样式 */
+.stSuccess {
+    background-color: #d4edda;
+    border-radius: 5px;
+}
+
+.stWarning {
+    background-color: #fff3cd;
+    border-radius: 5px;
+}
+
+.stError {
+    background-color: #f8d7da;
+    border-radius: 5px;
+}
