@@ -2,6 +2,7 @@
 
 # Web框架
 streamlit==1.31.0
+pyarrow==22.0.0  # 26+ 需要 numpy 2.x，与 numpy 1.26 不兼容
 
 # 数据处理
 pandas==2.0.3
