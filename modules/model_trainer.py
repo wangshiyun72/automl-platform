@@ -6,6 +6,8 @@
 
 import time
 
+import joblib
+
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import GridSearchCV, RandomizedSearchCV, StratifiedKFold, KFold
@@ -73,6 +75,10 @@ import warnings
 warnings.filterwarnings('ignore')
 
 from config import PARAM_GRIDS
+
+# 云端容器（如 Streamlit Cloud）通常只分配 1~2 个 CPU，而 n_jobs=-1 会按宿主机的核心数开线程，
+# 造成严重的线程争抢（LightGBM 训练几百行数据要近一分钟）。joblib.cpu_count() 会考虑容器的 CPU 配额。
+N_JOBS = max(1, joblib.cpu_count())
 
 
 class ModelTrainer:
@@ -150,13 +156,13 @@ class ModelTrainer:
         """
         if self.problem_type == "classification":
             model_dict = {
-                "RandomForest": RandomForestClassifier(random_state=self.random_state, n_jobs=-1),
+                "RandomForest": RandomForestClassifier(random_state=self.random_state, n_jobs=N_JOBS),
                 "GradientBoosting": GradientBoostingClassifier(random_state=self.random_state),
                 "AdaBoost": AdaBoostClassifier(random_state=self.random_state),
-                "ExtraTrees": ExtraTreesClassifier(random_state=self.random_state, n_jobs=-1),
+                "ExtraTrees": ExtraTreesClassifier(random_state=self.random_state, n_jobs=N_JOBS),
                 "LogisticRegression": LogisticRegression(random_state=self.random_state, max_iter=1000),
                 "SVM": SVC(random_state=self.random_state, probability=True),
-                "KNN": KNeighborsClassifier(n_jobs=-1),
+                "KNN": KNeighborsClassifier(n_jobs=N_JOBS),
                 "DecisionTree": DecisionTreeClassifier(random_state=self.random_state),
                 "NaiveBayes": GaussianNB(),
                 "NeuralNetwork": MLPClassifier(random_state=self.random_state, max_iter=1000),
@@ -166,33 +172,34 @@ class ModelTrainer:
                 model_dict["XGBoost"] = XGBClassifier(
                     random_state=self.random_state,
                     eval_metric='logloss',
-                    n_jobs=-1
+                    n_jobs=N_JOBS
                 )
             if LIGHTGBM_AVAILABLE:
                 model_dict["LightGBM"] = LGBMClassifier(
                     random_state=self.random_state,
                     verbose=-1,
-                    n_jobs=-1
+                    n_jobs=N_JOBS
                 )
             if CATBOOST_AVAILABLE:
                 model_dict["CatBoost"] = CatBoostClassifier(
                     random_state=self.random_state,
                     verbose=False,
-                    allow_writing_files=False
+                    allow_writing_files=False,
+                    thread_count=N_JOBS
                 )
 
         else:  # regression
             model_dict = {
-                "RandomForest": RandomForestRegressor(random_state=self.random_state, n_jobs=-1),
+                "RandomForest": RandomForestRegressor(random_state=self.random_state, n_jobs=N_JOBS),
                 "GradientBoosting": GradientBoostingRegressor(random_state=self.random_state),
                 "AdaBoost": AdaBoostRegressor(random_state=self.random_state),
-                "ExtraTrees": ExtraTreesRegressor(random_state=self.random_state, n_jobs=-1),
-                "LinearRegression": LinearRegression(n_jobs=-1),
+                "ExtraTrees": ExtraTreesRegressor(random_state=self.random_state, n_jobs=N_JOBS),
+                "LinearRegression": LinearRegression(n_jobs=N_JOBS),
                 "Ridge": Ridge(random_state=self.random_state),
                 "Lasso": Lasso(random_state=self.random_state),
                 "ElasticNet": ElasticNet(random_state=self.random_state),
                 "SVR": SVR(),
-                "KNN": KNeighborsRegressor(n_jobs=-1),
+                "KNN": KNeighborsRegressor(n_jobs=N_JOBS),
                 "DecisionTree": DecisionTreeRegressor(random_state=self.random_state),
                 "NeuralNetwork": MLPRegressor(random_state=self.random_state, max_iter=1000),
             }
@@ -200,19 +207,20 @@ class ModelTrainer:
             if XGBOOST_AVAILABLE:
                 model_dict["XGBoost"] = XGBRegressor(
                     random_state=self.random_state,
-                    n_jobs=-1
+                    n_jobs=N_JOBS
                 )
             if LIGHTGBM_AVAILABLE:
                 model_dict["LightGBM"] = LGBMRegressor(
                     random_state=self.random_state,
                     verbose=-1,
-                    n_jobs=-1
+                    n_jobs=N_JOBS
                 )
             if CATBOOST_AVAILABLE:
                 model_dict["CatBoost"] = CatBoostRegressor(
                     random_state=self.random_state,
                     verbose=False,
-                    allow_writing_files=False
+                    allow_writing_files=False,
+                    thread_count=N_JOBS
                 )
 
         return model_dict.get(model_name)
@@ -306,14 +314,14 @@ class ModelTrainer:
 
     def _make_search(self, model, param_grid, optimization, n_iter, cv, scoring):
         if optimization == "grid":
-            return GridSearchCV(model, param_grid, cv=cv, scoring=scoring, n_jobs=-1)
+            return GridSearchCV(model, param_grid, cv=cv, scoring=scoring, n_jobs=N_JOBS)
         if optimization == "bayes" and BAYESIAN_AVAILABLE:
             return BayesSearchCV(model, param_grid, n_iter=n_iter, cv=cv, scoring=scoring,
-                                 random_state=self.random_state, n_jobs=-1)
+                                 random_state=self.random_state, n_jobs=N_JOBS)
         # 随机搜索（或贝叶斯不可用时的后备）
         n_candidates = int(np.prod([len(v) for v in param_grid.values()]))
         return RandomizedSearchCV(model, param_grid, n_iter=min(n_iter, n_candidates), cv=cv,
-                                  scoring=scoring, random_state=self.random_state, n_jobs=-1)
+                                  scoring=scoring, random_state=self.random_state, n_jobs=N_JOBS)
 
     @staticmethod
     def _to_builtin(value):
