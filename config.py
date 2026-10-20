@@ -235,8 +235,47 @@ PARAM_GRIDS = {
         "C": [0.1, 1, 10],
         "kernel": ["rbf", "linear"],
         "gamma": ["scale", "auto"]
-    }
+    },
+    "CatBoost_reg": {
+        "iterations": [100, 200],
+        "depth": [4, 6, 8],
+        "learning_rate": [0.01, 0.1, 0.3]
+    },
+    "ElasticNet_reg": {
+        "alpha": [0.01, 0.1, 1, 10],
+        "l1_ratio": [0.2, 0.5, 0.8]
+    },
+    "KNN_reg": {
+        "n_neighbors": [3, 5, 7, 9],
+        "weights": ["uniform", "distance"]
+    },
 }
+
+# 两类问题共用的参数网格
+for _task in ("clf", "reg"):
+    PARAM_GRIDS.setdefault(f"GradientBoosting_{_task}", {
+        "n_estimators": [50, 100, 200],
+        "max_depth": [3, 5],
+        "learning_rate": [0.05, 0.1, 0.2]
+    })
+    PARAM_GRIDS.setdefault(f"ExtraTrees_{_task}", {
+        "n_estimators": [100, 200],
+        "max_depth": [None, 10, 20],
+        "min_samples_split": [2, 5]
+    })
+    PARAM_GRIDS.setdefault(f"DecisionTree_{_task}", {
+        "max_depth": [None, 5, 10, 20],
+        "min_samples_split": [2, 5, 10],
+        "min_samples_leaf": [1, 2, 4]
+    })
+    PARAM_GRIDS.setdefault(f"AdaBoost_{_task}", {
+        "n_estimators": [50, 100, 200],
+        "learning_rate": [0.05, 0.1, 0.5, 1.0]
+    })
+    PARAM_GRIDS.setdefault(f"NeuralNetwork_{_task}", {
+        "hidden_layer_sizes": [(64,), (100,), (64, 32)],
+        "alpha": [0.0001, 0.001, 0.01]
+    })
 
 # ==================== 默认设置 ====================
 DEFAULT_TRAIN_RATIO = 0.7

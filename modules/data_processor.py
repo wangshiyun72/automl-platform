@@ -4,10 +4,9 @@
 包含缺失值处理、编码转换、数据标准化等功能
 """
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 from sklearn.preprocessing import LabelEncoder, StandardScaler, MinMaxScaler
-from sklearn.impute import SimpleImputer
 import warnings
 
 warnings.filterwarnings('ignore')
@@ -16,19 +15,30 @@ warnings.filterwarnings('ignore')
 class DataProcessor:
     """
     数据处理器类
+
+    处理流程: 删除目标缺失行 → 识别列类型 → 日期转数值 → 填充缺失值
+             → 分类变量编码 → 目标编码 → 标准化
+    所有拟合得到的规则都会保存，transform() 可对新数据复用同一套处理。
     """
 
     def __init__(self):
         self.label_encoders = {}  # 存储分类变量的编码器
         self.scaler = None  # 存储标准化器
-        self.imputers = {}  # 存储缺失值填充器
+        self.fill_values = {}  # 每列的缺失填充值
         self.feature_names = []  # 特征名称
+        self.target_column = None
         self.target_encoder = None  # 目标变量编码器（分类问题）
         self.numeric_columns = []  # 数值列
         self.categorical_columns = []  # 分类列
+        self.datetime_columns = []  # 日期列（转换为距 1970 年的天数）
         self.scaling_method = None  # 标准化方法
+        self.problem_type = None
 
-    def fit_transform(self, df, target_column, feature_columns, scaling_method="none"):
+    # ------------------------------------------------------------------
+    # 拟合
+    # ------------------------------------------------------------------
+    def fit_transform(self, df, target_column, feature_columns, scaling_method="none",
+                      problem_type=None):
         """
         拟合并转换数据
 
@@ -37,47 +47,68 @@ class DataProcessor:
             target_column: 目标列名
             feature_columns: 特征列名列表
             scaling_method: 标准化方法 ("none", "zscore", "minmax")
+            problem_type: "classification" / "regression"；为 None 时按目标列类型推断
 
         返回:
-            X: 处理后的特征数据
-            y: 处理后的目标数据
+            X: 处理后的特征数据 (numpy 数组)
+            y: 处理后的目标数据 (numpy 数组)
             processing_log: 处理日志
         """
-        processing_log = []
-        self.feature_names = feature_columns.copy()
-        self.scaling_method = scaling_method
+        if not feature_columns:
+            raise ValueError("请至少选择一个特征列")
+        if target_column in feature_columns:
+            raise ValueError(f"目标列 '{target_column}' 不能同时作为特征列")
 
-        # 复制数据避免修改原始数据
-        data = df[feature_columns + [target_column]].copy()
+        processing_log = []
+        self.feature_names = list(feature_columns)
+        self.target_column = target_column
+        self.scaling_method = scaling_method
+        self.label_encoders = {}
+        self.fill_values = {}
+        self.scaler = None
+        self.target_encoder = None
+
+        data = df[self.feature_names + [target_column]].copy()
         processing_log.append(f"原始数据维度: {data.shape}")
 
-        # 1. 识别列类型
-        self.numeric_columns = []
-        self.categorical_columns = []
+        # 0. 删除目标值缺失的行
+        target_na = data[target_column].isna()
+        if target_na.any():
+            data = data.loc[~target_na].reset_index(drop=True)
+            processing_log.append(f"删除目标列缺失的样本: {int(target_na.sum())} 行")
+        if len(data) < 10:
+            raise ValueError(f"有效样本仅 {len(data)} 行，至少需要 10 行才能训练")
 
-        for col in feature_columns:
-            if data[col].dtype in ['int64', 'float64', 'int32', 'float32']:
+        # 1. 识别列类型
+        self.numeric_columns, self.categorical_columns, self.datetime_columns = [], [], []
+        for col in self.feature_names:
+            series = data[col]
+            if pd.api.types.is_datetime64_any_dtype(series):
+                self.datetime_columns.append(col)
+            elif pd.api.types.is_bool_dtype(series) or pd.api.types.is_numeric_dtype(series):
                 self.numeric_columns.append(col)
             else:
                 self.categorical_columns.append(col)
 
         processing_log.append(f"数值型特征: {len(self.numeric_columns)} 列")
         processing_log.append(f"分类型特征: {len(self.categorical_columns)} 列")
+        if self.datetime_columns:
+            processing_log.append(f"日期型特征: {len(self.datetime_columns)} 列（转换为天数）")
 
-        # 2. 处理缺失值
-        # 数值列用中位数填充
-        if self.numeric_columns:
-            num_imputer = SimpleImputer(strategy='median')
-            data[self.numeric_columns] = num_imputer.fit_transform(data[self.numeric_columns])
-            self.imputers['numeric'] = num_imputer
-            processing_log.append("数值型缺失值: 使用中位数填充")
+        data = self._coerce_types(data)
 
-        # 分类列用众数填充
-        if self.categorical_columns:
-            cat_imputer = SimpleImputer(strategy='most_frequent')
-            data[self.categorical_columns] = cat_imputer.fit_transform(data[self.categorical_columns])
-            self.imputers['categorical'] = cat_imputer
-            processing_log.append("分类型缺失值: 使用众数填充")
+        # 2. 处理缺失值：数值列中位数，分类列众数
+        for col in self.numeric_columns + self.datetime_columns:
+            median = data[col].median()
+            self.fill_values[col] = 0.0 if pd.isna(median) else float(median)
+        for col in self.categorical_columns:
+            mode = data[col].mode(dropna=True)
+            self.fill_values[col] = mode.iloc[0] if not mode.empty else "缺失"
+
+        n_missing = int(data[self.feature_names].isna().sum().sum())
+        data[self.feature_names] = data[self.feature_names].fillna(self.fill_values)
+        if n_missing:
+            processing_log.append(f"缺失值填充: {n_missing} 个（数值列用中位数，分类列用众数）")
 
         # 3. 编码分类变量
         for col in self.categorical_columns:
@@ -87,35 +118,56 @@ class DataProcessor:
             processing_log.append(f"列 '{col}' 编码: {len(le.classes_)} 个类别")
 
         # 4. 处理目标变量
-        y = data[target_column].copy()
+        y_raw = data[target_column]
+        if problem_type is None:
+            is_numeric_target = pd.api.types.is_numeric_dtype(y_raw) and not pd.api.types.is_bool_dtype(y_raw)
+            problem_type = "regression" if is_numeric_target and y_raw.nunique() > 20 else "classification"
+        self.problem_type = problem_type
 
-        # 检查目标变量是否需要编码
-        if y.dtype == 'object' or y.dtype.name == 'category':
+        if problem_type == "classification":
+            # 统一编码为 0..K-1，XGBoost 等模型要求类别从 0 开始连续
             self.target_encoder = LabelEncoder()
-            y = self.target_encoder.fit_transform(y.astype(str))
-            processing_log.append(f"目标变量编码: {len(self.target_encoder.classes_)} 个类别")
+            y = self.target_encoder.fit_transform(self._target_as_labels(y_raw))
+            n_classes = len(self.target_encoder.classes_)
+            if n_classes < 2:
+                raise ValueError("目标列只有 1 个类别，无法训练分类模型")
+            processing_log.append(f"目标变量编码: {n_classes} 个类别")
         else:
-            y = y.values
+            y_numeric = pd.to_numeric(y_raw, errors="coerce")
+            if y_numeric.isna().mean() > 0.05:
+                raise ValueError(
+                    f"目标列 '{target_column}' 不是数值型，无法进行回归。请改为分类问题或选择其他目标列"
+                )
+            if y_numeric.isna().any():
+                keep = ~y_numeric.isna()
+                processing_log.append(f"删除目标无法转为数值的样本: {int((~keep).sum())} 行")
+                data, y_numeric = data.loc[keep], y_numeric.loc[keep]
+            y = y_numeric.astype(float).values
 
         # 5. 提取特征
-        X = data[feature_columns].values
+        X = data[self.feature_names].astype(float).values
 
         # 6. 数据标准化
+        X = self._fit_scaler(X, scaling_method, processing_log)
+
+        processing_log.append(f"处理后数据维度: X={X.shape}, y={y.shape}")
+        return X, y, processing_log
+
+    def _fit_scaler(self, X, scaling_method, processing_log):
         if scaling_method == "zscore":
             self.scaler = StandardScaler()
-            X = self.scaler.fit_transform(X)
             processing_log.append("数据标准化: Z-score 标准化")
         elif scaling_method == "minmax":
             self.scaler = MinMaxScaler()
-            X = self.scaler.fit_transform(X)
             processing_log.append("数据标准化: MinMax 归一化")
         else:
             processing_log.append("数据标准化: 无")
+            return X
+        return self.scaler.fit_transform(X)
 
-        processing_log.append(f"处理后数据维度: X={X.shape}, y={y.shape}")
-
-        return X, y, processing_log
-
+    # ------------------------------------------------------------------
+    # 转换新数据
+    # ------------------------------------------------------------------
     def transform(self, df):
         """
         使用已拟合的处理器转换新数据
@@ -126,42 +178,62 @@ class DataProcessor:
         返回:
             X: 处理后的特征数据
         """
-        # 确保包含所有需要的特征列
-        missing_cols = set(self.feature_names) - set(df.columns)
+        missing_cols = [col for col in self.feature_names if col not in df.columns]
         if missing_cols:
             raise ValueError(f"新数据缺少以下列: {missing_cols}")
 
-        data = df[self.feature_names].copy()
+        data = self._coerce_types(df[self.feature_names].copy())
+        data = data.fillna(self.fill_values)
 
-        # 1. 处理缺失值
-        if self.numeric_columns and 'numeric' in self.imputers:
-            # 找出存在于新数据中的数值列
-            existing_num_cols = [col for col in self.numeric_columns if col in data.columns]
-            if existing_num_cols:
-                data[existing_num_cols] = self.imputers['numeric'].transform(data[existing_num_cols])
-
-        if self.categorical_columns and 'categorical' in self.imputers:
-            existing_cat_cols = [col for col in self.categorical_columns if col in data.columns]
-            if existing_cat_cols:
-                data[existing_cat_cols] = self.imputers['categorical'].transform(data[existing_cat_cols])
-
-        # 2. 编码分类变量
+        # 编码分类变量，未见过的类别编码为 -1
         for col in self.categorical_columns:
-            if col in self.label_encoders:
-                le = self.label_encoders[col]
-                # 处理未见过的类别
-                data[col] = data[col].astype(str).apply(
-                    lambda x: le.transform([x])[0] if x in le.classes_ else -1
-                )
+            le = self.label_encoders[col]
+            mapping = {cls: idx for idx, cls in enumerate(le.classes_)}
+            data[col] = data[col].astype(str).map(mapping).fillna(-1).astype(int)
 
-        # 3. 提取特征
-        X = data[self.feature_names].values
+        X = data[self.feature_names].astype(float).values
 
-        # 4. 数据标准化
         if self.scaler is not None:
             X = self.scaler.transform(X)
 
         return X
+
+    def get_unseen_categories(self, df):
+        """返回新数据中训练时未出现过的类别，用于给出预测提示"""
+        unseen = {}
+        for col in self.categorical_columns:
+            if col not in df.columns:
+                continue
+            known = set(self.label_encoders[col].classes_)
+            values = set(df[col].dropna().astype(str)) - known
+            if values:
+                unseen[col] = sorted(values)[:10]
+        return unseen
+
+    # ------------------------------------------------------------------
+    # 辅助方法
+    # ------------------------------------------------------------------
+    def _coerce_types(self, data):
+        """把各列统一为拟合时识别的类型"""
+        for col in self.numeric_columns:
+            series = data[col]
+            if pd.api.types.is_bool_dtype(series):
+                series = series.astype(float)
+            data[col] = pd.to_numeric(series, errors="coerce").replace([np.inf, -np.inf], np.nan)
+        for col in self.datetime_columns:
+            parsed = pd.to_datetime(data[col], errors="coerce")
+            data[col] = (parsed - pd.Timestamp("1970-01-01")) / pd.Timedelta(days=1)
+        for col in self.categorical_columns:
+            series = data[col]
+            data[col] = series.where(series.isna(), series.astype(str).str.strip())
+        return data
+
+    @staticmethod
+    def _target_as_labels(y):
+        """把目标列转为可读的字符串标签（整数型浮点数去掉 .0）"""
+        if pd.api.types.is_float_dtype(y) and np.allclose(y, np.round(y)):
+            y = y.astype(int)
+        return y.astype(str)
 
     def get_feature_names(self):
         """获取特征名称"""
@@ -176,5 +248,5 @@ class DataProcessor:
     def inverse_transform_target(self, y):
         """反转目标变量编码"""
         if self.target_encoder is not None:
-            return self.target_encoder.inverse_transform(y)
+            return self.target_encoder.inverse_transform(np.asarray(y).astype(int).ravel())
         return y
