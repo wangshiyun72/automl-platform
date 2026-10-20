@@ -16,7 +16,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-plt.rcParams['font.sans-serif'] = ['Microsoft YaHei', 'SimHei', 'PingFang SC', 'Arial Unicode MS', 'DejaVu Sans']
+plt.rcParams['font.sans-serif'] = ['Microsoft YaHei', 'SimHei', 'PingFang SC', 'WenQuanYi Zen Hei', 'Noto Sans CJK SC', 'Arial Unicode MS', 'DejaVu Sans']
 plt.rcParams['axes.unicode_minus'] = False
 
 import plotly.express as px
@@ -212,7 +212,7 @@ def render_sidebar():
     with st.sidebar:
         st.markdown(
             '<div class="sidebar-brand"><div class="logo">🤖</div>'
-            '<div><div class="name">AutoML Studio</div><div class="tag">零代码机器学习 · SHAP 可解释</div></div></div>',
+            '<div><div class="name">AutoML Studio</div><div class="tag">深度集成SHAP可解释</div></div></div>',
             unsafe_allow_html=True,
         )
 

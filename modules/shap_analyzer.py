@@ -12,7 +12,7 @@ import matplotlib
 matplotlib.use('Agg')  # 非交互式后端
 import matplotlib.pyplot as plt
 
-plt.rcParams['font.sans-serif'] = ['Microsoft YaHei', 'SimHei', 'PingFang SC', 'Arial Unicode MS', 'DejaVu Sans']
+plt.rcParams['font.sans-serif'] = ['Microsoft YaHei', 'SimHei', 'PingFang SC', 'WenQuanYi Zen Hei', 'Noto Sans CJK SC', 'Arial Unicode MS', 'DejaVu Sans']
 plt.rcParams['axes.unicode_minus'] = False
 
 import warnings
