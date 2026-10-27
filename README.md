@@ -89,15 +89,6 @@ automl-platform/
 - **可解释性**：SHAP
 - **可视化**：Plotly、Matplotlib
 
-## ☁️ 部署到 Streamlit Community Cloud
-
-1. Fork 或推送本仓库到自己的 GitHub（需为公开仓库）。
-2. 登录 [share.streamlit.io](https://share.streamlit.io)，点击 **Create app**。
-3. 选择仓库、`main` 分支，主文件填 `app.py`。
-4. 在 **Advanced settings** 中将 Python 版本设为 **3.11**（依赖锁定的版本不支持更新的 Python）。
-5. 点击 **Deploy**，首次构建约 3–5 分钟。
-
-`packages.txt` 会自动安装文泉驿中文字体，保证 SHAP 图中的中文正常显示。
 
 ## ⚠️ 注意事项
 
